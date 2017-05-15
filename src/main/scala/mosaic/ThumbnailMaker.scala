@@ -56,9 +56,7 @@ object ThumbnailMaker {
       img <- Some(image)
       if (img.width % tileSize == 0)
       if (img.height % tileSize == 0)
-      x <- img.width / tileSize
-      y <- img.width / tileSize
-    } yield (x, y)
+    } yield (img.width / tileSize, img.height / tileSize)
 
     val tiles: Option[(List[((Int, Int), Image)])] = maxPos.map(xy => {
 
