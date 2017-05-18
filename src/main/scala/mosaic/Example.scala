@@ -1,6 +1,6 @@
 import java.io.{File, PrintWriter}
 
-import ThumbnailMaker._
+import mosaic.ThumbnailMaker._
 import com.sksamuel.scrimage.Image
 
 object Example {

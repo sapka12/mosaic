@@ -1,3 +1,5 @@
+package mosaic
+
 import java.awt.image.BufferedImage
 
 import com.sksamuel.scrimage.{Color, Image, ImageMetadata}
