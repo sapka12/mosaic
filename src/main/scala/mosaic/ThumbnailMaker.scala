@@ -3,12 +3,11 @@ package mosaic
 import java.awt.image.BufferedImage
 
 import com.sksamuel.scrimage.{Color, Image, ImageMetadata}
+import mosaic.Mosaic.Tile
 
 import scala.util.Random
 
 object ThumbnailMaker {
-
-  case class Tile(position: (Int, Int), image: Image)
 
   def thumbnail(image: Image, size: Int): Image = {
     val horizontal = image.width > image.height
@@ -52,7 +51,7 @@ object ThumbnailMaker {
       .getOrElse(Color.Black)
   }
 
-  def segmentation(tileSize: Int, image: Image): Option[List[Tile]] = {
+  def segment(tileSize: Int, image: Image): Option[List[Tile]] = {
 
     val maxPos: Option[(Int, Int)] = for {
       img <- Some(image)
@@ -60,11 +59,15 @@ object ThumbnailMaker {
       if (img.height % tileSize == 0)
     } yield (img.width / tileSize, img.height / tileSize)
 
+    println(s"maxpos: $maxPos")
+
     val tiles: Option[(List[((Int, Int), Image)])] = maxPos.map(xy => {
 
+      println(s"xy: $xy")
+
       val subImages = for {
-        x <- 0 to xy._1
-        y <- 0 to xy._2
+        x <- 0 until  xy._1
+        y <- 0 until  xy._2
       } yield ((x, y), image.subimage(x * tileSize, y * tileSize, tileSize, tileSize))
 
       subImages.toList
@@ -74,22 +77,14 @@ object ThumbnailMaker {
     //      .map(randomize)
   }
 
-  def randomize[A](as: List[A]): List[A] = {
-    def go(list: List[A], aggr: List[A]): List[A] =
-      if (list.isEmpty) aggr
-      else {
-        val randomIdx = Random.nextInt(list.size)
-        go(
-          list.take(randomIdx) ::: list.drop(randomIdx + 1),
-          aggr ::: List(list(randomIdx))
-        )
-      }
-
-    go(as, List())
-  }
+  def randomize[A](as: List[A]): List[A] = as.foldLeft(
+    List.empty[A])((actualList, a) => {
+      val split = actualList.splitAt(Random.nextInt(actualList.size))
+      split._1 ::: List(a) ::: split._2
+    })
 
   //TODO remove tile duplication
-  def bestMatchStrategy(album: List[Tile])(tile: Tile): Tile = {
+  def bestMatchStrategy(album: List[Image])(img: Image): Image = {
 
     def sq(i: Int): Double = i.toDouble * i
 
@@ -99,22 +94,26 @@ object ThumbnailMaker {
       +sq(c1.blue - c2.blue)
     }
 
-    album.foldLeft(tile)((a, b) => {
-      val rgbTile = rgb(tile.image)
-      if (diff(rgbTile, rgb(a.image)) < diff(rgbTile, rgb(b.image))) a
-      else b
-    })
+    def closerAvgColor(i1: Image, i2: Image): Image = {
+      val rgbBaseImg = rgb(img)
+
+      if (diff(rgbBaseImg, rgb(i1)) < diff(rgbBaseImg, rgb(i2))) i1
+      else i2
+    }
+
+    album.foldLeft(img)(closerAvgColor)
   }
 
-  def change(tiles: List[Tile], strategy: Tile => Tile): List[Tile] =
-    tiles.map(strategy)
+  def change(tiles: List[Tile], strategy: Image => Image): List[Tile] =
+    tiles.map(tile => (tile.copy(image = strategy(tile.image))))
 
-  def bestMatchChange(input: Image, thumbnails: List[Tile], strategy: Tile => Tile): List[Tile] =
-    segmentation(64, input)
+  def bestMatchChange(input: Image, tileSize: Int, thumbnails: List[Image]): List[Tile] =
+    segment(tileSize, input)
       .map(tiles => change(tiles, bestMatchStrategy(thumbnails)))
       .getOrElse(List())
 
-  def desegmentation(tiles: List[Tile]): Image = {
+  def desegment(tiles: List[Tile]): Image = {
+    println("desegmentation")
     val maxHeight = tiles.map(t => (1 + t.image.height) * t.position._1).max
     val maxWidth = tiles.map(t => (1 + t.image.width) * t.position._2).max
 

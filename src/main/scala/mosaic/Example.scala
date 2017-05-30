@@ -1,63 +1,48 @@
-import java.io.{File, PrintWriter}
+import java.io.File
 
-import mosaic.ThumbnailMaker._
 import com.sksamuel.scrimage.Image
+import mosaic.MosaicBuilder
+
+import scala.util.Try
 
 object Example {
 
   val extensions = List("jpg", "jpeg").map("." + _)
 
-  def main(args: Array[String]): Unit = {
+  case class Input(inputImagePath: String, tileSize: Int, tileFolderPath: String, outputImagePath: String)
 
-    args(0) match {
-      case "tiling" => tiling(args)
-      case "indexing" => indexing(args)
-    }
-  }
+  case class MosaicInput(inputImage: Image, tileSize: Int, bigPictures: Set[Image], outputFile: File)
 
-  private def tiling(args: Array[String]): Unit = {
-    val thumbnailSize = args(1).toInt
-    val inputFolder = new File(args(2))
-    val outputFolderPath = args(3)
+  def inputs(args: Array[String]): Option[Input] = Try {
+    Input(
+      inputImagePath = args(0),
+      tileSize = args(1).toInt,
+      tileFolderPath = args(2),
+      outputImagePath = args(3)
+    )
+  }.toOption
 
-    println(s"thumbnailSize: $thumbnailSize")
-    println(s"inputFolder: $inputFolder")
-    println(s"outputFolderPath: $outputFolderPath")
-
-    inputFolder.listFiles
+  def toMosaicInput(input: Input): Option[MosaicInput] = Try {
+    val inputImage: Image = Image.fromFile(new File(input.inputImagePath))
+    val bigPictures: Set[Image] = new File(input.tileFolderPath)
+      .listFiles
       .filter(_.isFile)
       .filter(file => extensions.exists(file.getName.toLowerCase.endsWith(_)))
-      .foreach(f => {
-        val inputPath = f.getAbsolutePath
-        val outputPath = outputFolderPath + f.getName
+      .map(Image.fromFile(_))
+      .toSet
+    val outputFile: File = new File(input.outputImagePath)
 
-        println(outputPath)
+    MosaicInput(inputImage, input.tileSize, bigPictures, outputFile)
+  }.toOption
 
-        thumbnail(
-          Image.fromFile(new File(inputPath)),
-          thumbnailSize
-        ).output(outputPath)
-      })
-  }
-
-  private def indexing(args: Array[String]) = {
-    val tileFolderPath = args(1)
-    val outputFilePath = args(2)
-
-    println(s"tileFolderPath: $tileFolderPath")
-    println(s"outputFilePath: $outputFilePath")
-
-    val csvRows = new File(tileFolderPath)
-      .listFiles()
-      .map(_.getAbsolutePath)
-      .map(path => (path, rgb(Image.fromFile(new File(path)))))
-
-    val output = csvRows.map(row => s"${row._1},${row._2.red},${row._2.green},${row._2.blue}").mkString("\n")
-
-    new PrintWriter(outputFilePath) {
-      write(output);
-      close
-    }
-  }
+  def main(args: Array[String]): Unit =
+    for {
+      input <- inputs(args)
+      mosaicInput <- toMosaicInput(input)
+    } MosaicBuilder.build(
+      mosaicInput.inputImage,
+      mosaicInput.tileSize,
+      mosaicInput.bigPictures
+    ).output(mosaicInput.outputFile)
 
 }
