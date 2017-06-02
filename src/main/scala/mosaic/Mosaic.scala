@@ -14,17 +14,21 @@ trait Mosaic {
 
   def indexing(images: Set[Image]): Set[(Image, Color)]
 
-  def segmentation(input: Image, tileSize: Int): List[Tile]
+  def segmentation(input: Image, tileSize: Int): Option[List[Tile]]
 
   def change(tiles: List[Tile], palette: Set[(Image, Color)]): List[ChangedTile]
 
   def desegmentation(tiles: List[Tile]): Image
 
-  def build(input: Image, tileSize: Int, bigPictures: Set[Image]): Image = {
+  def build(input: Image, tileSize: Int, bigPictures: Set[Image]): Option[Image] = {
     val thumbnails = indexing(tiling(bigPictures, tileSize))
-    val segmented = segmentation(input, tileSize)
-    val changedTiles = change(segmented, thumbnails)
-    desegmentation(changedTiles.map(t => Tile(t.position, t.after)))
+
+    for {
+      segmented <- segmentation(input, tileSize)
+    } yield desegmentation(
+      change(segmented, thumbnails)
+        .map(f => Tile(f.position, f.after))
+    )
   }
 }
 
@@ -37,9 +41,8 @@ object MosaicBuilder extends Mosaic {
   override def indexing(images: Set[Image]): Set[(Image, Color)] = images
     .map(image => (image, rgb(image)))
 
-  //TODO use Option
-  override def segmentation(input: Image, tileSize: Int): List[Tile] =
-    segment(tileSize, input).get
+  override def segmentation(input: Image, tileSize: Int): Option[List[Tile]] =
+    segment(tileSize, input)
 
   override def change(tiles: List[Tile], palette: Set[(Image, Color)]): List[ChangedTile] =
     tiles.map(tile => ChangedTile(

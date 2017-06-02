@@ -1,5 +1,6 @@
 import java.io.File
 
+import akka.actor.ActorSystem
 import com.sksamuel.scrimage.Image
 import mosaic.MosaicBuilder
 
@@ -36,13 +37,13 @@ object Example {
   }.toOption
 
   def main(args: Array[String]): Unit =
-    for {
-      input <- inputs(args)
-      mosaicInput <- toMosaicInput(input)
-    } MosaicBuilder.build(
-      mosaicInput.inputImage,
-      mosaicInput.tileSize,
-      mosaicInput.bigPictures
-    ).output(mosaicInput.outputFile)
+  {
+   val inputs =  inputs(args)
+
+    val system = ActorSystem("mosaic")
+
+
+  }
+
 
 }
