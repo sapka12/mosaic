@@ -3,6 +3,8 @@ import java.io.{File, PrintWriter}
 import mosaic.ThumbnailMaker._
 import com.sksamuel.scrimage.Image
 
+import scala.io.Source
+
 object Example {
 
   val extensions = List("jpg", "jpeg").map("." + _)
@@ -12,7 +14,24 @@ object Example {
     args(0) match {
       case "tiling" => tiling(args)
       case "indexing" => indexing(args)
+      case "assemble" => assemble(args)
     }
+  }
+
+  private def assemble(args: Array[String]): Unit = {
+    val masterPicture = Image.fromFile(new File(args(1)))
+    val outputPicture = args(2)
+    val tileSize = args(3).toInt
+    val indexFile = new File(args(4))
+
+    val thumbnails: List[Image] = Source.fromFile(indexFile).getLines.toList
+      .map(line => Image.fromFile(new File(line.split(",").head)))
+
+    val segments = bestMatchChange(masterPicture, tileSize, thumbnails)
+
+    val out = desegmentation(segments)
+
+    out.output(new File(outputPicture))
   }
 
   private def tiling(args: Array[String]): Unit = {
@@ -52,7 +71,9 @@ object Example {
       .map(_.getAbsolutePath)
       .map(path => (path, rgb(Image.fromFile(new File(path)))))
 
-    val output = csvRows.map(row => s"${row._1},${row._2.red},${row._2.green},${row._2.blue}").mkString("\n")
+    val output = csvRows
+      .map(row => s"${row._1},${row._2.red},${row._2.green},${row._2.blue}")
+      .mkString("\n")
 
     new PrintWriter(outputFilePath) {
       write(output);

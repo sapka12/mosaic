@@ -89,7 +89,7 @@ object ThumbnailMaker {
   }
 
   //TODO remove tile duplication
-  def bestMatchStrategy(album: List[Tile])(tile: Tile): Tile = {
+  def bestMatchStrategy(album: List[Image])(tile: Image): Image = {
 
     def sq(i: Int): Double = i.toDouble * i
 
@@ -100,17 +100,17 @@ object ThumbnailMaker {
     }
 
     album.foldLeft(tile)((a, b) => {
-      val rgbTile = rgb(tile.image)
-      if (diff(rgbTile, rgb(a.image)) < diff(rgbTile, rgb(b.image))) a
+      val rgbTile = rgb(tile)
+      if (diff(rgbTile, rgb(a)) < diff(rgbTile, rgb(b))) a
       else b
     })
   }
 
-  def change(tiles: List[Tile], strategy: Tile => Tile): List[Tile] =
-    tiles.map(strategy)
+  def change(tiles: List[Tile], strategy: Image => Image): List[Tile] =
+    tiles.map(i => i.copy(image = strategy(i.image)))
 
-  def bestMatchChange(input: Image, thumbnails: List[Tile], strategy: Tile => Tile): List[Tile] =
-    segmentation(64, input)
+  def bestMatchChange(input: Image, tileSize: Int, thumbnails: List[Image]): List[Tile] =
+    segmentation(tileSize, input)
       .map(tiles => change(tiles, bestMatchStrategy(thumbnails)))
       .getOrElse(List())
 
