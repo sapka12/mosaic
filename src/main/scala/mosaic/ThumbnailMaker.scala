@@ -2,7 +2,7 @@ package mosaic
 
 import java.awt.image.BufferedImage
 
-import com.sksamuel.scrimage.{Color, Image, ImageMetadata}
+import com.sksamuel.scrimage.{Color, Image, ImageMetadata, Pixel}
 
 import scala.util.Random
 
@@ -12,7 +12,8 @@ object ThumbnailMaker {
 
   def thumbnail(image: Image, size: Int): Image = {
     val horizontal = image.width > image.height
-    val remaining = (image.width + image.height - 2 * image.width.min(image.height)) / 2
+    val remaining = (image.width + image.height - 2 * image.width.min(
+      image.height)) / 2
 
     def cut(horizontal: Boolean) = if (horizontal) remaining else 0
 
@@ -30,48 +31,72 @@ object ThumbnailMaker {
       y <- 0 until image.height
     } yield image.color(x, y)
 
-    def avg(prevAvg: Double, count: Int, newVal: Double): Double = (prevAvg * count + newVal) / (count + 1)
+    def avg(prevAvg: Double, count: Int, newVal: Double): Double =
+      (prevAvg * count + newVal) / (count + 1)
 
     colors
       .map(c => (c.red.toDouble, c.green.toDouble, c.blue.toDouble))
       .foldLeft[Option[(Int, (Double, Double, Double))]](None)(
-      (b, a) => {
-        b match {
-          case None => Some((1, a))
-          case Some((count, (r, g, b))) => Some((count + 1,
-            (
-              avg(r, count, a._1), avg(g, count, a._2), avg(b, count, a._3)
-            )
-          ))
+        (b, a) => {
+          b match {
+            case None => Some((1, a))
+            case Some((count, (r, g, b))) =>
+              Some(
+                (count + 1,
+                 (
+                   avg(r, count, a._1),
+                   avg(g, count, a._2),
+                   avg(b, count, a._3)
+                 )))
+          }
         }
-      }
-    )
+      )
       .map(_._2)
       .map(c => (c._1.toInt, c._2.toInt, c._3.toInt))
       .map(c => Color(c._1, c._2, c._3))
       .getOrElse(Color.Black)
   }
 
+  def pixelize(image: Image): Seq[Seq[Color]] = {
+
+    for {
+      x <- 0 until image.width
+    } yield
+      for {
+        y <- 0 until image.height
+      } yield image.pixel(x, y).toColor
+  }
+
   def segmentation(tileSize: Int, image: Image): Option[List[Tile]] = {
+    println(s"input image: $image")
+    Some(segmentation(tileSize, pixelize(image)))
+  }
 
-    val maxPos: Option[(Int, Int)] = for {
-      img <- Some(image)
-      if (img.width % tileSize == 0)
-      if (img.height % tileSize == 0)
-    } yield (img.width / tileSize, img.height / tileSize)
+  def segmentation(tileSize: Int, image: Seq[Seq[Color]]): List[Tile] = {
 
-    val tiles: Option[(List[((Int, Int), Image)])] = maxPos.map(xy => {
+    def imageOf(posX: Int, posY: Int): Image = {
 
-      val subImages = for {
-        x <- 0 to xy._1
-        y <- 0 to xy._2
-      } yield ((x, y), image.subimage(x * tileSize, y * tileSize, tileSize, tileSize))
+      val pixels = for {
+        x <- posX until (posX + tileSize)
+        y <- posY until (posY + tileSize)
+      } yield Pixel(image(x)(y))
 
-      subImages.toList
-    })
+      Image(tileSize, tileSize, pixels.toArray)
+    }
 
-    tiles.map(_.map(x => Tile(x._1, x._2)))
-    //      .map(randomize)
+    val positions = for {
+      x <- 0 until image.size
+      y <- 0 until image.head.size
+      if (x % tileSize == 0)
+      if (y % tileSize == 0)
+
+      if (x + tileSize <= image.size)
+      if (y + tileSize <= image(x).size)
+
+    } yield Tile((x / tileSize, y / tileSize), imageOf(x, y))
+
+    println(s"number of tiles: ${positions.size}")
+    positions.toList
   }
 
   def randomize[A](as: List[A]): List[A] = {
@@ -109,23 +134,53 @@ object ThumbnailMaker {
   def change(tiles: List[Tile], strategy: Image => Image): List[Tile] =
     tiles.map(i => i.copy(image = strategy(i.image)))
 
-  def bestMatchChange(input: Image, tileSize: Int, thumbnails: List[Image]): List[Tile] =
+  def bestMatchChange(input: Image,
+                      tileSize: Int,
+                      thumbnails: List[Image]): List[Tile] =
     segmentation(tileSize, input)
       .map(tiles => change(tiles, bestMatchStrategy(thumbnails)))
       .getOrElse(List())
 
   def desegmentation(tiles: List[Tile]): Image = {
-    val maxHeight = tiles.map(t => (1 + t.image.height) * t.position._1).max
-    val maxWidth = tiles.map(t => (1 + t.image.width) * t.position._2).max
 
-    val baseImage = new Image(new BufferedImage(maxWidth, maxHeight, BufferedImage.TYPE_INT_ARGB), ImageMetadata(List()))
+    println(s"tiles: ${tiles.size}")
 
-    tiles.foldLeft(baseImage)((image, tile) => {
-      image.underlay(
-        tile.image,
-        tile.position._1 * tile.image.width,
-        tile.position._2 * tile.image.height
-      )
-    })
+    val maxWidth = tiles
+      .map(_ match {
+        case Tile((x, _), img) => img.width * (x + 1)
+      })
+      .max
+
+    val maxHeight = tiles
+      .map(_ match {
+        case Tile((_, y), img) => img.height * (y + 1)
+      })
+      .max
+
+    println(s"maxWidth: $maxWidth")
+    println(s"maxHeight: $maxHeight")
+
+    val baseImage = new Image(
+      new BufferedImage(maxWidth, maxHeight, BufferedImage.TYPE_INT_ARGB),
+      ImageMetadata(List()))
+
+    //TODO Referential transparency?
+    tiles.foreach {
+      _ match {
+        case Tile((tilePosX, tilePosY), img) =>
+          for {
+            x <- 0 until img.width
+            y <- 0 until img.height
+          } yield {
+            baseImage.setPixel(
+              tilePosX * img.width + x,
+              tilePosY * img.height + y,
+              img.pixel(x, y)
+            )
+          }
+      }
+    }
+
+    baseImage
   }
 }
