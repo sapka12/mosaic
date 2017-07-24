@@ -67,9 +67,9 @@ object ThumbnailMaker {
       } yield image.pixel(x, y).toColor
   }
 
-  def segmentation(tileSize: Int, image: Image): Option[List[Tile]] = {
+  def segmentation(tileSize: Int, image: Image): List[Tile] = {
     println(s"input image: $image")
-    Some(segmentation(tileSize, pixelize(image)))
+    segmentation(tileSize, pixelize(image))
   }
 
   def segmentation(tileSize: Int, image: Seq[Seq[Color]]): List[Tile] = {
@@ -133,13 +133,6 @@ object ThumbnailMaker {
 
   def change(tiles: List[Tile], strategy: Image => Image): List[Tile] =
     tiles.map(i => i.copy(image = strategy(i.image)))
-
-  def bestMatchChange(input: Image,
-                      tileSize: Int,
-                      thumbnails: List[Image]): List[Tile] =
-    segmentation(tileSize, input)
-      .map(tiles => change(tiles, bestMatchStrategy(thumbnails)))
-      .getOrElse(List())
 
   def desegmentation(tiles: List[Tile]): Image = {
 
