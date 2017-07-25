@@ -1,6 +1,7 @@
 package mosaic
 
 import java.awt.image.BufferedImage
+import java.io.File
 
 import com.sksamuel.scrimage.{Color, Image, ImageMetadata, Pixel}
 
@@ -8,7 +9,15 @@ import scala.util.Random
 
 object ThumbnailMaker {
 
+  case class IndexedImage(path: String, color: Color) {
+    lazy val image = Image.fromFile(new File(path))
+  }
+
   case class Tile(position: (Int, Int), image: Image)
+
+  case class ConsumeState(tilesToConsume: List[Tile],
+                          consumedTiles: List[Tile],
+                          thumbs: List[IndexedImage])
 
   def thumbnail(image: Image, size: Int): Image = {
     val horizontal = image.width > image.height
@@ -31,30 +40,14 @@ object ThumbnailMaker {
       y <- 0 until image.height
     } yield image.color(x, y)
 
-    def avg(prevAvg: Double, count: Int, newVal: Double): Double =
-      (prevAvg * count + newVal) / (count + 1)
-
-    colors
+    val (r, g, b) = colors
       .map(c => (c.red.toDouble, c.green.toDouble, c.blue.toDouble))
-      .foldLeft[Option[(Int, (Double, Double, Double))]](None)(
-        (b, a) => {
-          b match {
-            case None => Some((1, a))
-            case Some((count, (r, g, b))) =>
-              Some(
-                (count + 1,
-                 (
-                   avg(r, count, a._1),
-                   avg(g, count, a._2),
-                   avg(b, count, a._3)
-                 )))
-          }
-        }
-      )
-      .map(_._2)
-      .map(c => (c._1.toInt, c._2.toInt, c._3.toInt))
-      .map(c => Color(c._1, c._2, c._3))
-      .getOrElse(Color.Black)
+      .unzip3
+
+    def avg(colorComponents: Seq[Double]): Int =
+      (colorComponents.sum / colors.size).toInt
+
+    Color(avg(r), avg(g), avg(b))
   }
 
   def pixelize(image: Image): Seq[Seq[Color]] = {
@@ -114,7 +107,7 @@ object ThumbnailMaker {
   }
 
   //TODO remove tile duplication
-  def bestMatchStrategy(album: List[Image])(tile: Image): Image = {
+  def bestMatchStrategy(album: List[IndexedImage])(tile: Image): IndexedImage = {
 
     def sq(i: Int): Double = i.toDouble * i
 
@@ -124,9 +117,10 @@ object ThumbnailMaker {
       +sq(c1.blue - c2.blue)
     }
 
-    album.foldLeft(tile)((a, b) => {
-      val rgbTile = rgb(tile)
-      if (diff(rgbTile, rgb(a)) < diff(rgbTile, rgb(b))) a
+    val rgbTile = rgb(tile)
+
+    album.foldLeft(album.head)((a, b) => {
+      if (diff(rgbTile, a.color) < diff(rgbTile, b.color)) a
       else b
     })
   }
@@ -176,4 +170,45 @@ object ThumbnailMaker {
 
     baseImage
   }
+
+  def flipTiles(in: List[Tile])(
+      implicit allThumbnails: List[IndexedImage]): List[Tile] = {
+
+    def nextState(cs: ConsumeState)(
+      implicit allThumbnails: List[IndexedImage]): ConsumeState = cs match {
+      case ConsumeState(tilesToConsume, consumedTiles, thumbs) =>
+        val consuming = tilesToConsume.head
+        val bestMatch = bestMatchStrategy(thumbs)(consuming.image)
+        val remainingThumbnails = thumbs.filterNot(_ == bestMatch) match {
+          case List() => allThumbnails
+          case remaining: List[IndexedImage] => remaining
+        }
+
+        println(s"to consume: ${tilesToConsume.size}, consumed: ${consumedTiles.size}, thumbnails: ${thumbs.size}")
+
+        ConsumeState(
+          tilesToConsume.tail,
+          consuming.copy(image = bestMatch.image) :: consumedTiles,
+          remainingThumbnails
+        )
+    }
+
+    def go(cs: ConsumeState): ConsumeState =
+      if (cs.tilesToConsume.isEmpty) cs
+      else {
+        go(nextState(cs))
+      }
+
+    go(ConsumeState(in, List(), allThumbnails)).consumedTiles
+  }
+
+  def inputImage(filepath: String, tileSize: Int) = {
+    val in = Image.fromFile(new File(filepath))
+
+    val w = in.width - in.width % tileSize
+    val h = in.height - in.height % tileSize
+
+    in.resizeTo(w, h)
+  }
+
 }

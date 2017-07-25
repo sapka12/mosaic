@@ -1,7 +1,8 @@
 import java.io.{File, PrintWriter}
 
 import mosaic.ThumbnailMaker._
-import com.sksamuel.scrimage.Image
+import com.sksamuel.scrimage.{Color, Image}
+import org.apache.commons.io.FileUtils
 
 import scala.io.Source
 import scala.util.Random
@@ -20,47 +21,19 @@ object Example {
   }
 
   private def assemble(args: Array[String]): Unit = {
-    val masterPicture = Image.fromFile(new File(args(1)))
-    val outputPicture = args(2)
     val tileSize = args(3).toInt
+    val masterPicture = inputImage(args(1), tileSize)
+    val outputPicture = args(2)
     val indexFile = new File(args(4))
 
-    implicit val thumbnails: List[Image] = Source
+    implicit val thumbnails: List[IndexedImage] = Source
       .fromFile(indexFile)
       .getLines
       .toList
-      .map(line => Image.fromFile(new File(line.split(",").head)))
-
-    case class ConsumeState(tilesToConsume: List[Tile],
-                            consumedTiles: List[Tile],
-                            thumbs: List[Image])
-
-    def nextState(cs: ConsumeState)(implicit allThumbnails: List[Image]): ConsumeState = cs match {
-      case ConsumeState(tilesToConsume, consumedTiles, thumbs) =>
-        val consuming = tilesToConsume.head
-        val bestMatch = bestMatchStrategy(thumbs)(consuming.image)
-        val remainingThumbnails = thumbs.filterNot(_ == bestMatch) match {
-          case List() => allThumbnails
-          case remaining: List[Image] => remaining
-        }
-
-        ConsumeState(
-          tilesToConsume.tail,
-          consuming.copy(image = bestMatch) :: consumedTiles,
-          remainingThumbnails
-        )
-    }
-
-    def flipTiles(in: List[Tile]): List[Tile] = {
-
-      def go(cs: ConsumeState): ConsumeState =
-        if (cs.tilesToConsume.isEmpty) cs
-        else {
-          go(nextState(cs))
-        }
-
-      go(ConsumeState(in, List(), thumbnails)).consumedTiles
-    }
+      .map(line => {
+        val data = line.split(",")
+        IndexedImage(data(0), Color(data(1).toInt, data(2).toInt, data(3).toInt))
+      })
 
     val segmented = Random.shuffle(segmentation(tileSize, masterPicture))
     val changed = flipTiles(segmented)
@@ -78,14 +51,14 @@ object Example {
     println(s"inputFolder: $inputFolder")
     println(s"outputFolderPath: $outputFolderPath")
 
+    FileUtils.forceMkdir(new File((outputFolderPath)))
+
     inputFolder.listFiles
       .filter(_.isFile)
       .filter(file => extensions.exists(file.getName.toLowerCase.endsWith(_)))
       .foreach(f => {
         val inputPath = f.getAbsolutePath
         val outputPath = outputFolderPath + f.getName
-
-        println(outputPath)
 
         thumbnail(
           Image.fromFile(new File(inputPath)),
