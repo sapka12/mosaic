@@ -3,6 +3,7 @@ package mosaic
 import java.awt.image.BufferedImage
 import java.io.File
 
+import com.sksamuel.scrimage.composite.AlphaComposite
 import com.sksamuel.scrimage.{Color, Image, ImageMetadata, Pixel}
 
 import scala.util.Random
@@ -171,11 +172,11 @@ object ThumbnailMaker {
     baseImage
   }
 
-  def flipTiles(in: List[Tile])(
+  def flipTiles(in: List[Tile], alpha: Double)(
       implicit allThumbnails: List[IndexedImage]): List[Tile] = {
 
     def nextState(cs: ConsumeState)(
-      implicit allThumbnails: List[IndexedImage]): ConsumeState = cs match {
+        implicit allThumbnails: List[IndexedImage]): ConsumeState = cs match {
       case ConsumeState(tilesToConsume, consumedTiles, thumbs) =>
         val consuming = tilesToConsume.head
         val bestMatch = bestMatchStrategy(thumbs)(consuming.image)
@@ -184,11 +185,14 @@ object ThumbnailMaker {
           case remaining: List[IndexedImage] => remaining
         }
 
-        println(s"to consume: ${tilesToConsume.size}, consumed: ${consumedTiles.size}, thumbnails: ${thumbs.size}")
+        val newTileImage = bestMatch.image.composite(AlphaComposite(alpha), consuming.image)
+
+        println(
+          s"to consume: ${tilesToConsume.size}, consumed: ${consumedTiles.size}, thumbnails: ${thumbs.size}")
 
         ConsumeState(
           tilesToConsume.tail,
-          consuming.copy(image = bestMatch.image) :: consumedTiles,
+          consuming.copy(image = newTileImage) :: consumedTiles,
           remainingThumbnails
         )
     }

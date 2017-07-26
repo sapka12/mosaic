@@ -5,7 +5,7 @@ import com.sksamuel.scrimage.{Color, Image}
 import org.apache.commons.io.FileUtils
 
 import scala.io.Source
-import scala.util.Random
+import scala.util.{Random, Try}
 
 object Example {
 
@@ -25,6 +25,7 @@ object Example {
     val masterPicture = inputImage(args(1), tileSize)
     val outputPicture = args(2)
     val indexFile = new File(args(4))
+    val alpha = Try(args(5).toDouble).toOption.getOrElse(0.0)
 
     implicit val thumbnails: List[IndexedImage] = Source
       .fromFile(indexFile)
@@ -36,7 +37,7 @@ object Example {
       })
 
     val segmented = Random.shuffle(segmentation(tileSize, masterPicture))
-    val changed = flipTiles(segmented)
+    val changed = flipTiles(segmented, alpha)
     val mosaic = desegmentation(changed)
 
     mosaic.output(new File(outputPicture))
